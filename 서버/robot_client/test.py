@@ -58,11 +58,19 @@ class SocketServer():
                 BUFF_SIZE = 1024
                 LIMIT_TIME = 10
                 # send_value = self.SMART.contorol_motor([0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3A,0x3B,0x3C,0x3D],[value,value,value,value,value,value,value,value,value,value,value,value,value])
-                send_value =(str({0x31:value,0x32:value,0x33:value,0x35:value,0x36:value,0x37:value,0x38:value,0x39:value,0x3B:value,0x3C:value}))
+                send_value =(str({0x31:value,0x32:value,0x33:value,0x34:value,0x36:value,0x37:value,0x38:value,0x39:value,0x3A:value,0x3C:value}))
                 # send_value = self.SMART.contorol_motor([0x31],[1])
                 # data = pickle.dumps(send_value, protocol=pickle.HIGHEST_PROTOCOL)
-                value += 1
-                value %=200
+                if flag :
+                    value += 5  
+                    if value>=365:
+                        flag=0
+                        value = 360
+                else:
+                    value-=5
+                    if value<=-5:
+                        flag=1
+                        value = 0
 
                 if len(send_value) <90:
                     for i in range(0, 90-len(send_value)):
@@ -70,7 +78,7 @@ class SocketServer():
 
                 client_socket.sendall(bytes(send_value,'utf-8'))
                 print(send_value, len((send_value)))
-                time.sleep(0.001)
+                time.sleep(0.04)
 
             except socket.timeout as err:
                 print('self.self.client_socket Timeout Error')

@@ -2,12 +2,12 @@
 
 // Please modify it to suit your hardware.
 #define DXL_SERIAL   Serial
-#define DEBUG_SERIAL Serial3
+// #define DEBUG_SERIAL Serial1
 const int DXL_DIR_PIN = 2; // DYNAMIXEL Shield DIR PIN
 
 float f_1present_position = 0.0;
 float f_2present_position = 0.0;
-int max_id = 6;
+int max_id = 30;
 
 float pre_positionList[6]; 
 int motor_stateList[6];
@@ -43,7 +43,7 @@ void setup() {
     dxl.writeControlTableItem(PROFILE_VELOCITY, i, 30);
     delay(1);
     
-   DEBUG_SERIAL.print(i);
+  //  DEBUG_SERIAL.print(i);
 
   }
 

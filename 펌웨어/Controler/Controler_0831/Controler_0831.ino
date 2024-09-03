@@ -100,7 +100,7 @@ void loop()
     int RMValue = digitalRead(RM_PIN);
 
     pitch_data = constrain(int(map(round(gyro_x*100), 100, -100,0,250)),0,250); 
-    uint8_t idbuf[] = {0x34, 0x3E, 0x3F};
+    uint8_t idbuf[] = {0x35, 0x3E, 0x3F};
     int valuebuf[] = {pitch_data, speed_data, speed_data};
     databuffer+='{';
     for(int i =0; i<3; i++)
