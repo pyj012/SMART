@@ -1,1 +1,0 @@
-print(int.from_bytes(b'\xc0','big')==0xc0)

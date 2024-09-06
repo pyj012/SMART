@@ -7,17 +7,20 @@ import struct
 import pickle
 # import cv2
 # import mediapipe as mp
-import numpy as np
+import numpy as npz
 from collections import deque
 import heapq
 # from LowPassFilterTest import LowPassFilter
 from protocol import *
-
-angle= 0
-prevSendTime = time.time()
-lock = threading.Lock()
+import paho.mqtt.client as mqtt
+import json, time
 SERVER_HOST = "192.168.20.2"
 SERVER_PORT = 5051
+
+# angle= 0
+# prevSendTime = time.time()
+# lock = threading.Lock()
+
 
 
 
@@ -51,8 +54,6 @@ class SocketServer():
         step = 0
         flag=True
         value = 0
-
-
         while True:
             try:
                 BUFF_SIZE = 1024
@@ -62,23 +63,24 @@ class SocketServer():
                 # send_value = self.SMART.contorol_motor([0x31],[1])
                 # data = pickle.dumps(send_value, protocol=pickle.HIGHEST_PROTOCOL)
                 if flag :
-                    value += 5  
-                    if value>=365:
+                    value += 40  
+                    if value>=400:
                         flag=0
                         value = 360
                 else:
-                    value-=5
-                    if value<=-5:
+                    value-=40 
+                    if value<=-40:
                         flag=1
                         value = 0
 
                 if len(send_value) <90:
                     for i in range(0, 90-len(send_value)):
                         send_value+=' '
+                client_socket.recv(1)
 
                 client_socket.sendall(bytes(send_value,'utf-8'))
-                print(send_value, len((send_value)))
-                time.sleep(0.04)
+                time.sleep(1)
+                # print(send_value, len((send_value)))
 
             except socket.timeout as err:
                 print('self.self.client_socket Timeout Error')
