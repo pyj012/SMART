@@ -36,7 +36,8 @@ data = {0x31:0, 0x32:0, 0x33:0, 0x34:0, 0x36:DROP_VAL}
 prevSendTime = time.time()
 
 lock = threading.Lock()
-SERVER_HOST = "192.168.20.2"
+# SERVER_HOST = "192.168.20.2"
+SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 5051
 
 
@@ -45,13 +46,12 @@ class SocketServer():
         # 서버 구동에 필요한 정보 세팅
         self._host = SERVER_HOST
         self._port = SERVER_PORT
+        self.connected = False  # 초기 연결 상태
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._data = data
         self._angle = angle
         self._prestate = data
         self._sendtime = ""
-        self.client_socket =socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY,1)
-        self.client_socket.connect((SERVER_HOST, SERVER_PORT))
         self.pre_arm_angle = [0,0,0,0,0,0,0,0]
         
         self.lpf = dict()
@@ -66,30 +66,43 @@ class SocketServer():
         self.lpf[9] = LowPassFilter(cut_off_freqency= 1., ts= 0.1, limit_low=0, limit_high=150)
         self.lpf[10] = LowPassFilter(cut_off_freqency= 1., ts= 0.1, limit_low=0, limit_high=60)
         # self.lpf[12] = LowPassFilter(cut_off_freqency= 0.5, ts= 0.1)
-        
-        self.SMART = smartprotocol()
-        self.client_socket =socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.connect((SERVER_HOST, SERVER_PORT))
-        
-        serverthread = threading.Thread(target= self._handle_client, args=(self.client_socket,))
-        serverthread.daemon = True
-        serverthread.start()
 
-
-
-
+        #미디어파이프 카메라 초기 세팅
         input_stream1 = 0#'media/cam0_test_half_speed.mp4'
         input_stream2 = 2#'media/cam1_test_half_speed.mp4'
-
         P0 = get_projection_matrix(0)
         P1 = get_projection_matrix(2)
-        
-        while(1):
-            self.run_mp(input_stream1, input_stream2, P0, P1)
-            pass
-    
-    
 
+        self.cv_thread = threading.Thread(target=self.run_mp, args=(input_stream1, input_stream2, P0, P1))
+        self.cv_thread.daemon = True
+        self.cv_thread.start()
+
+        self.receive_thread = threading.Thread(target=self._handle_client)
+        self.receive_thread.daemon = True
+        self.receive_thread.start()
+
+
+    def connect_to_server(self):
+        """서버에 연결을 시도하는 함수"""
+        if not self.connected:
+            try:
+                self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.client_socket.connect((SERVER_HOST, SERVER_PORT))
+                print("Connected to server.")
+                self.connected = True
+            except socket.error as err:
+                print(f"Connection error: {err}")
+                self.client_socket.close()
+        else:
+            self.disconnect_from_server()
+
+    def disconnect_from_server(self):
+        """서버 연결을 해제하는 함수"""
+        if self.connected:
+            self.client_socket.close()
+            print("Disconnected from server.")
+            self.connected = False
+    
     def run_mp(self, input_stream1, input_stream2, P0, P1):
 
         mp_pose = mp.solutions.pose
@@ -277,56 +290,63 @@ class SocketServer():
 
             prevSendTime = time.time()
 
+            # 연결 상태 표시
+            status_text = "Connected" if self.connected else "Disconnected"
+            cv.putText(frame1, status_text, (10, 30), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-
+            # 화면에 표시
             cv.imshow('cam1', frame1)
             cv.imshow('cam0', frame0)
 
-            k = cv.waitKey(1)
-            if k & 0xFF == 27:
+            key = cv.waitKey(1) & 0xFF
+            if key == 27:  # ESC 키
                 break
+            elif key == 32:  # Space 키를 눌러 연결/해제 전환
+                self.connect_to_server()
 
         cv.destroyAllWindows()
         for cap in caps:
             cap.release()
 
-
-    def _handle_client(self, client_socket):
+    def _handle_client(self):
         step = 0
         flag=True
         value = 0
         while True:
-            try:
-                BUFF_SIZE = 1024
-                LIMIT_TIME = 10
-                # send_value = self.SMART.contorol_motor([0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3A,0x3B,0x3C,0x3D],[value,value,value,value,value,value,value,value,value,value,value,value,value])
-                send_value =(str(self._data))
-                # send_value = self.SMART.contorol_motor([0x31],[1])
-                # data = pickle.dumps(send_value, protocol=pickle.HIGHEST_PROTOCOL)
+            if self.connected:
+                try:
+                    BUFF_SIZE = 1024
+                    LIMIT_TIME = 10
+                    # send_value = self.SMART.contorol_motor([0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3A,0x3B,0x3C,0x3D],[value,value,value,value,value,value,value,value,value,value,value,value,value])
+                    send_value =(str(self._data))
+                    # send_value = self.SMART.contorol_motor([0x31],[1])
+                    # data = pickle.dumps(send_value, protocol=pickle.HIGHEST_PROTOCOL)
 
-                if len(send_value) <90:
-                    for i in range(0, 90-len(send_value)):
-                        send_value+=' '
+                    if len(send_value) <90:
+                        for i in range(0, 90-len(send_value)):
+                            send_value+=' '
 
-                print(bytes(send_value,'utf-8'))
-                client_socket.sendall(bytes(send_value,'utf-8'))
-                time.sleep(0.1)
-                # print(send_value, len((send_value)))
+                    print(bytes(send_value,'utf-8'))
+                    self.client_socket.sendall(bytes(send_value,'utf-8'))
+                    time.sleep(0.1)
+                    # print(send_value, len((send_value)))
 
-            except socket.timeout as err:
-                print('self.self.client_socket Timeout Error')
-                
-                # 추가적인 예외처리 로직 구성...
-                self._close_client(client_socket)
-                break
-            except socket.error as err:
-                self._close_client(client_socket)
-                break
-
-
-
-    def _close_client(self, client_socket):
-        client_socket.close()
+                except socket.timeout as err:
+                    print(f'Timeout Error : {err}')
+                    
+                    # 추가적인 예외처리 로직 구성...
+                    self.connected = False
+                    self.client_socket.close()
+                    break
+                except socket.error as err:
+                    print(f'Something Error : {err}')
+                    self.connected = False
+                    self.client_socket.close()
+                    break
+            else:
+                time.sleep(1)
 
 if __name__ == "__main__":
     server = SocketServer()
+    while True:
+        time.sleep(0.1)
