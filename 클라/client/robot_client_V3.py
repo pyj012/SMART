@@ -17,8 +17,8 @@ from protocol import *
 
 import cv2 as cv
 import mediapipe as mp
-from utils_V2 import DLT, get_projection_matrix, calculate_3d
-from LowPassFilterTest import LowPassFilter
+from utils_V3 import DLT, get_projection_matrix, calculate_3d
+from ValueControlFilter import ValueControlFilter
 
 
 
@@ -37,6 +37,7 @@ prevSendTime = time.time()
 
 lock = threading.Lock()
 # SERVER_HOST = "192.168.20.2"
+SERVER_HOST = "192.168.0.213"
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 5051
 
@@ -54,24 +55,25 @@ class SocketServer():
         self._sendtime = ""
         self.pre_arm_angle = [0,0,0,0,0,0,0,0]
         
-        self.lpf = dict()
-        self.lpf[1] = LowPassFilter(cut_off_freqency= 1., ts= 0.1, limit_low=0, limit_high=150)
-        self.lpf[2] = LowPassFilter(cut_off_freqency= 1., ts= 0.1, limit_low=0, limit_high=120)
-        self.lpf[3] = LowPassFilter(cut_off_freqency= 1., ts= 0.1, limit_low=0, limit_high=150)
-        self.lpf[4] = LowPassFilter(cut_off_freqency= 1., ts= 0.1, limit_low=0, limit_high=60)
+        # 필터 : 일단 개별 각도의 변동이 작은경우, 큰 경우 무시하는걸로 만들었는데 끝점 좌표가 많이 변하면 제한하는 방식이 나을지도?
+        self.vcf = dict()
+        self.vcf[1] = ValueControlFilter(prev_data = 0, dev = 10, dev_Limit= 50, limit_low = 0, limit_high = 160)
+        self.vcf[2] = ValueControlFilter(prev_data = 0, dev = 10, dev_Limit= 50, limit_low = 0, limit_high = 120)
+        self.vcf[3] = ValueControlFilter(prev_data = 0, dev = 10, limit_low = 0, limit_high = 120)
+        self.vcf[4] = ValueControlFilter(prev_data = 0, dev = 10, limit_low = 0, limit_high = 110)
         # self.lpf[6] = LowPassFilter(cut_off_freqency= 0.5, ts= 0.1)
         
-        self.lpf[7] = LowPassFilter(cut_off_freqency= 1., ts= 0.1, limit_low=0, limit_high=150)
-        self.lpf[8] = LowPassFilter(cut_off_freqency= 1., ts= 0.1, limit_low=0, limit_high=120)
-        self.lpf[9] = LowPassFilter(cut_off_freqency= 1., ts= 0.1, limit_low=0, limit_high=150)
-        self.lpf[10] = LowPassFilter(cut_off_freqency= 1., ts= 0.1, limit_low=0, limit_high=60)
+        self.vcf[7] = ValueControlFilter(prev_data = 0, dev = 10, dev_Limit= 50, limit_low = 0, limit_high = 160)
+        self.vcf[8] = ValueControlFilter(prev_data = 0, dev = 10, dev_Limit= 50, limit_low = 0, limit_high = 120)
+        self.vcf[9] = ValueControlFilter(prev_data = 0, dev = 10, limit_low = 0, limit_high = 120)
+        self.vcf[10] = ValueControlFilter(prev_data = 0, dev = 10, limit_low = 0, limit_high = 110)
         # self.lpf[12] = LowPassFilter(cut_off_freqency= 0.5, ts= 0.1)
 
         #미디어파이프 카메라 초기 세팅
         input_stream1 = 0#'media/cam0_test_half_speed.mp4'
         input_stream2 = 2#'media/cam1_test_half_speed.mp4'
         P0 = get_projection_matrix(0)
-        P1 = get_projection_matrix(2)
+        P1 = get_projection_matrix(1)
 
         self.cv_thread = threading.Thread(target=self.run_mp, args=(input_stream1, input_stream2, P0, P1))
         self.cv_thread.daemon = True
@@ -223,9 +225,9 @@ class SocketServer():
             # Draw angles on frame
             nameTag = ['R_shoulder','R_shoulder','R_elbow','R_wrist','L_shoulder','L_shoulder','L_elbow','L_wrist']
             # Draw angles on frame
-            for i, (name, angle) in enumerate(zip(nameTag,arm_angle)):
-                text = f'Angle {name}: {angle:.2f}'
-                cv.putText(frame0, text, (10, 30 + i * 30), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv.LINE_AA)
+            # for i, (name, angle) in enumerate(zip(nameTag,arm_angle)):
+            #     text = f'Angle {name}: {angle:.2f}'
+            #     cv.putText(frame0, text, (10, 30 + i * 30), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv.LINE_AA)
 
             global prevSendTime
             if time.time()-prevSendTime>=0.05:
@@ -233,58 +235,40 @@ class SocketServer():
                 
                 sendValue = dict()
 
-                # sendValue[1] = round(self.lpf[1].filter(arm_angle[0]))
-                # sendValue[2] = round(self.lpf[2].filter(arm_angle[1]))
-                # sendValue[3] = round(self.lpf[3].filter(arm_angle[2]))
-                # sendValue[4] = round(self.lpf[4].filter(arm_angle[3]))
+                sendValue[1] = self.vcf[1].filter(arm_angle[0])
+                sendValue[2] = self.vcf[2].filter(arm_angle[1])
+                sendValue[3] = self.vcf[3].filter(arm_angle[2])
+                sendValue[4] = self.vcf[4].filter(arm_angle[3])
 
-                # sendValue[7] = round(self.lpf[7].filter(arm_angle[4]))
-                # sendValue[8] = round(self.lpf[8].filter(arm_angle[5]))
-                # sendValue[9] = round(self.lpf[9].filter(arm_angle[6]))
-                # sendValue[10] = round(self.lpf[10].filter(arm_angle[7]))
-                if arm_angle[0] < 0 :
-                    sendValue[1] = 0
-                else:
-                    sendValue[1] = round(arm_angle[0])
+                sendValue[7] = self.vcf[7].filter(arm_angle[4])
+                sendValue[8] = self.vcf[8].filter(arm_angle[5])
+                sendValue[9] = self.vcf[9].filter(arm_angle[6])
+                sendValue[10] = self.vcf[10].filter(arm_angle[7])
 
-                if arm_angle[0] > 120 :
-                    sendValue[1] = 120
+                '''
+                sendValue[1] = set_limit(0,160,arm_angle[0]//10*10)
+                if sendValue[1] < 90:
+                    sendValue[2] = set_limit(0,120,arm_angle[1]//10*10)
                 else:
-                    sendValue[1] = round(arm_angle[0])
-                
-                sendValue[2] = round(arm_angle[1])
+                    sendValue[2] = set_limit(0,120,180 - arm_angle[1]//10*10)
+                sendValue[3] = set_limit(0,120,arm_angle[2]//10*10)
+                sendValue[4] = set_limit(0,110,arm_angle[3]*1)
 
-                if arm_angle[2] > 120 :
-                    sendValue[3] = 120
-                else:
-                    sendValue[3] = round(arm_angle[2])
-                sendValue[4] = round(arm_angle[3])*2
-
-
-
-                if arm_angle[4] < 0 :
-                    sendValue[7] = 0
-                else:
-                    sendValue[7] = round(arm_angle[4])
-                if arm_angle[4] > 120 :
-                    sendValue[7] = 120
-                else:
-                    sendValue[7] = round(arm_angle[4])
-                
-                
-                sendValue[8] = round(arm_angle[5])
-                
-                if arm_angle[6] > 120 :
-                    sendValue[9] = 120
-                else:
-                    sendValue[9] = round(arm_angle[6])
-                sendValue[10] = round(arm_angle[7])*2
+                sendValue[7] = 0#set_limit(0,180,arm_angle[4])
+                sendValue[8] = 0#set_limit(0,120,arm_angle[5])
+                sendValue[9] = 0#set_limit(0,120,arm_angle[6])
+                sendValue[10] = 0#set_limit(0,110,arm_angle[7]*1)
+                '''
 
                 # processed_keys = list(np.array(list(sendValue.keys()))+48)
                 # processed_keys = [key + 48 for key in list(sendValue.keys())]
             self._data = dict(zip(sendValue.keys(),sendValue.values()))
 
-                    
+            for i, (name, angle) in enumerate(zip(nameTag,self._data.values())):
+                text = f'Angle {name}: {angle:.2f}'
+                cv.putText(frame0, text, (10, 30 + i * 30), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv.LINE_AA)
+
+
             # print(self._data)
             # print()
 
